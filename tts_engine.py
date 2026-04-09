@@ -36,7 +36,7 @@ class KokoroTTS:
         # Kokoro usa prefijos: ef_ (Spanish Female), em_ (Spanish Male), af_ (US Female), etc.
         voice_lower = voice.lower()
         if "es" in lang.lower() or "es-" in voice_lower:
-            lang = "es-es"
+            lang = "es"
             # Si recibimos una voz de Google/ElevenLabs o af_heart, mapeamos a una española de Kokoro
             if not voice_lower.startswith('e'):
                 # Por defecto usamos em_fede (masculina española)
@@ -108,4 +108,4 @@ def generate_tts_local(text, voice="em_fede", rate="-5%"):
     except:
         pass
         
-    return _engine.generate(text, voice=voice, speed=speed, lang="es-es")
+    return _engine.generate(text, voice=voice, speed=speed, lang="es")
