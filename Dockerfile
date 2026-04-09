@@ -1,14 +1,19 @@
 FROM python:3.11-slim
 
-# Instalar dependencias del sistema (FFmpeg para video y libgomp1 para ONNX)
+# Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libgomp1 \
     espeak-ng \
     fonts-dejavu-core \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Descargar los modelos de Kokoro directamente a la imagen para que sean persistentes
+RUN wget -q https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx && \
+    wget -q https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
 
 # Copiar dependencias primero para aprovechar el cache de Docker
 COPY requirements.txt .
