@@ -41,23 +41,49 @@ class KokoroTTS:
             raise
 
     def _ensure_loaded(self):
-        # Verificar y descargar modelos si no existen o están incompletos
-        if not os.path.exists(self.model_path) or os.path.getsize(self.model_path) < 1024 * 1024:
-            # Usamos el modelo estable de thewh1teagle
+        # Verificar y descargar modelos si no existen o están incompletos (310MB aprox)
+        if not os.path.exists(self.model_path) or os.path.getsize(self.model_path) < 100 * 1024 * 1024:
+            # Usamos el modelo v1.0 ONNX oficial
             url = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
             self._download_file(url, self.model_path)
+
+        # Para las voces, usaremos los archivos individuales de Alex y Dora (Latino/Nativos)
+        # Esto evita el Error 404 del paquete consolidado
+        voices_to_download = {
+            "em_alex": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/em_alex.bin",
+            "ef_dora": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/ef_dora.bin"
+        }
+
+        # Inicializar diccionario de voces cargadas
+        self.custom_voices = {}
+        persistent_dir = os.path.dirname(self.model_path)
+
+        for v_name, v_url in voices_to_download.items():
+            v_dest = os.path.join(persistent_dir, f"{v_name}.bin")
+            if not os.path.exists(v_dest) or os.path.getsize(v_dest) < 500: # Vector de estilo es pequeño (~1KB-30KB)
+                self._download_file(v_url, v_dest)
             
-        if not os.path.exists(self.voices_path) or os.path.getsize(self.voices_path) < 1024 * 1024:
-            # Usamos el paquete de voces multilingüe de rany2 (incluye Alex, Dora, etc.)
-            url = "https://github.com/rany2/kokoro-onnx/releases/download/v0.1.0/voices.bin"
-            self._download_file(url, self.voices_path)
+            # Cargamos el vector de estilo en memoria
+            try:
+                # Los .bin de onnx-community son vectores de estilo (estilo dict o raw)
+                # Cargamos con numpy
+                style = np.fromfile(v_dest, dtype=np.float32)
+                # Reajustamos a (1, 256) que es lo que espera kokoro-onnx 
+                # (A veces vienen con padding, por eso tomamos los primeros 256)
+                if style.size >= 256:
+                    self.custom_voices[v_name] = style[:256].reshape(1, -1)
+                    logger.info(f"Voz '{v_name}' cargada correctamente desde {v_dest}")
+            except Exception as e:
+                logger.error(f"Fallo al cargar voz {v_name}: {e}")
 
         if self.model is None:
-            logger.info("Cargando Kokoro TTS ONNX...")
-            self.model = Kokoro(self.model_path, self.voices_path)
-            # Log de voces para confirmar que Alex/Dora están presentes
-            if hasattr(self.model, 'voices'):
-                logger.info(f"Cargadas {len(self.model.voices)} voces del catálogo.")
+            logger.info("Cargando Kokoro TTS ONNX (Modo Voces Individuales)...")
+            # Truco: Pasamos una de las voces como placeholder, luego inyectamos las nuestras
+            sample_voice_path = os.path.join(persistent_dir, "em_alex.bin")
+            self.model = Kokoro(self.model_path, sample_voice_path)
+            # Inyectamos nuestro diccionario de voces multilingües
+            self.model.voices = self.custom_voices
+            logger.info(f"Catálogo de voces activado con: {list(self.model.voices.keys())}")
             
         if self.whisper is None:
             logger.info("Cargando Faster-Whisper (tiny, CPU)...")
