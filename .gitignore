@@ -1,0 +1,54 @@
+# Environment
+.env.local
+.env
+*.env
+
+# Dependencies
+node_modules/
+*.lock
+package-lock.json
+yarn.lock
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Temp
+tmp/
+temp/
+__pycache__/
+*.pyc
+
+# n8n
+n8n-data/
+.n8n/
+
+# Videos/Media (large files)
+videos/
+*.mp4
+*.wav
+*.mp3
+*.jpg
+*.png
+
+# Backups
+backups/
+*.bak
