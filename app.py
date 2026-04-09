@@ -284,7 +284,7 @@ def normalize_clip(src: str, dst: str) -> bool:
 
 
 def compose_single_pass(clip_urls: list, audio_path: str, ass_path: str,
-                        fuente: str, duration: float, tmp: str) -> str:
+                        fuente: str, duration: float, last_word_end: float, tmp: str) -> str:
     """Download + normalize clips, then ONE FFmpeg pass for overlay+subs+audio."""
     # Pass URLs directly as raw_paths to enable FFmpeg direct HTTP streaming
     raw_paths = clip_urls
@@ -337,7 +337,7 @@ def compose_single_pass(clip_urls: list, audio_path: str, ass_path: str,
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
         '-c:a', 'aac', '-b:a', '128k',
         '-pix_fmt', 'yuv420p',
-        '-shortest', out
+        '-t', f'{last_word_end + 0.15:.2f}', out
     ], capture_output=True, text=True)
     if r.returncode != 0:
         raise Exception(f'FFmpeg compose failed:\n{r.stderr[-600:]}')
@@ -376,6 +376,8 @@ async def compose_video(req: ComposeRequest):
                 words = build_word_timestamps(req.alignment or {})
             ass_path = build_ass(words, tmp)
             fuente   = str(req.guion.get('fuente', ''))[:55].strip()
+            
+            last_word_end = words[-1][2] if words else duration
 
             # Build visual prompts from guion keywords
             keywords = req.guion.get('visual_keywords', [])
@@ -411,7 +413,7 @@ async def compose_video(req: ComposeRequest):
                 raise Exception('Pexels y fal.ai fallaron. Verifica PEXELS_API_KEY y saldo fal.ai')
 
             # Single FFmpeg pass: concat+scale+overlay+subs+audio
-            tmp_out = compose_single_pass(clip_urls, audio_path, ass_path, fuente, duration, tmp)
+            tmp_out = compose_single_pass(clip_urls, audio_path, ass_path, fuente, duration, last_word_end, tmp)
 
             file_id    = str(uuid.uuid4())
             final_path = os.path.join(VIDEOS_DIR, f'{file_id}.mp4')
@@ -450,7 +452,7 @@ async def send_telegram(req: TelegramRequest):
                 f'https://api.telegram.org/bot{TG_TOKEN}/sendVideo',
                 data={'chat_id': chat_id, 'caption': caption},
                 files={'video': ('short.mp4', vf, 'video/mp4')},
-                timeout=120
+                timeout=300
             )
         if r.status_code != 200:
             raise Exception(f'Telegram sendVideo failed: {r.text[:300]}')
