@@ -41,19 +41,23 @@ class KokoroTTS:
             raise
 
     def _ensure_loaded(self):
-        # Verificar y descargar modelos si no existen
-        if not os.path.exists(self.model_path):
-            url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_quantized.onnx"
+        # Verificar y descargar modelos si no existen o están incompletos
+        if not os.path.exists(self.model_path) or os.path.getsize(self.model_path) < 1024 * 1024:
+            # Usamos el modelo estable de thewh1teagle
+            url = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
             self._download_file(url, self.model_path)
             
-        if not os.path.exists(self.voices_path):
-            url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices.bin"
+        if not os.path.exists(self.voices_path) or os.path.getsize(self.voices_path) < 1024 * 1024:
+            # Usamos el paquete de voces multilingüe de rany2 (incluye Alex, Dora, etc.)
+            url = "https://github.com/rany2/kokoro-onnx/releases/download/v0.1.0/voices.bin"
             self._download_file(url, self.voices_path)
 
         if self.model is None:
             logger.info("Cargando Kokoro TTS ONNX...")
             self.model = Kokoro(self.model_path, self.voices_path)
-            logger.info(f"Cargadas {len(self.model.voices)} voces del catálogo.")
+            # Log de voces para confirmar que Alex/Dora están presentes
+            if hasattr(self.model, 'voices'):
+                logger.info(f"Cargadas {len(self.model.voices)} voces del catálogo.")
             
         if self.whisper is None:
             logger.info("Cargando Faster-Whisper (tiny, CPU)...")
