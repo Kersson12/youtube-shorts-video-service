@@ -35,11 +35,10 @@ class KokoroTTS:
         # Mapeo robusto a voces de Kokoro v1.0
         # Kokoro usa prefijos: ef_ (Spanish Female), em_ (Spanish Male), af_ (US Female), etc.
         voice_lower = voice.lower()
-        if "es" in lang.lower() or "es-" in voice_lower:
+        if "es" in lang.lower() or voice_lower.startswith("es-"):
             lang = "es"
-            # Si recibimos una voz de Google/ElevenLabs o af_heart, mapeamos a una española de Kokoro
-            if not voice_lower.startswith('e'):
-                # Por defecto usamos em_fede (masculina española)
+            # Si la voz NO empieza con los prefijos nativos de Kokoro (ef_ o em_), forzamos la masculina
+            if not (voice_lower.startswith('ef_') or voice_lower.startswith('em_')):
                 voice = "em_fede"
         
         # Verificación final: si la voz no está en el catálogo, usamos una por defecto segura
@@ -50,7 +49,7 @@ class KokoroTTS:
                 logger.warning(f"Voz '{voice}' no encontrada en catálogo Kokoro. Disponibles: {available_voices}")
                 # Forzamos una voz que REALMENTE exista en el catálogo si es posible
                 if "es" in lang:
-                    voice = "ef_dora" if "ef_dora" in available_voices else (available_voices[0] if available_voices else voice)
+                    voice = "em_fede" if "em_fede" in available_voices else (available_voices[0] if available_voices else voice)
                 else:
                     voice = "af_heart" if "af_heart" in available_voices else (available_voices[0] if available_voices else voice)
                 logger.info(f"Reasignada voz a: {voice}")
