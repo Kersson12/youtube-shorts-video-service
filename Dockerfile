@@ -11,9 +11,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Descargar los modelos de Kokoro directamente a la imagen para que sean persistentes
+# Descargar los modelos y voces nativas de Kokoro
 RUN wget -q https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx && \
-    wget -q https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+    wget -q https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin && \
+    wget -q https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices/es_fede.bin && \
+    wget -q https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices/es_dora.bin
 
 # Copiar dependencias primero para aprovechar el cache de Docker
 COPY requirements.txt .
