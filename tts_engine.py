@@ -39,15 +39,15 @@ class KokoroTTS:
             lang = "es-es"
             # Si recibimos una voz de Google/ElevenLabs o af_heart, mapeamos a una española de Kokoro
             if not voice_lower.startswith('e'):
-                # Por defecto usamos ef_dora (femenina española)
-                voice = "ef_dora"
+                # Por defecto usamos em_fede (masculina española)
+                voice = "em_fede"
         
         # Verificación final: si la voz no está en el catálogo, usamos una por defecto segura
         # model.voices es un diccionario con los nombres de las voces cargadas
         available_voices = list(self.model.voices.keys())
         if voice not in available_voices:
-            logger.warning(f"Voz '{voice}' no encontrada. Usando 'ef_dora' por defecto. Disponibles: {available_voices}")
-            voice = "ef_dora" if "es" in lang else "af_heart"
+            logger.warning(f"Voz '{voice}' no encontrada. Usando 'em_fede' por defecto. Disponibles: {available_voices}")
+            voice = "em_fede" if "es" in lang else "af_heart"
         
         with tempfile.TemporaryDirectory() as tmp:
             wav_path = os.path.join(tmp, "speech.wav")
@@ -85,7 +85,7 @@ class KokoroTTS:
 # Instancia global para ser usada en app.py
 _engine = None
 
-def generate_tts_local(text, voice="ef_dora", rate="-5%"):
+def generate_tts_local(text, voice="em_fede", rate="-5%"):
     global _engine
     if _engine is None:
         # Buscamos los modelos en la carpeta del script o en shorts_data
