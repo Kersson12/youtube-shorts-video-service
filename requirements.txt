@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+requests
+pillow
+mutagen
+kokoro-onnx
+onnxruntime
+faster-whisper
+soundfile
+numpy
