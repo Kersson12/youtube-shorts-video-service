@@ -82,39 +82,38 @@ def _pexels_search_one(query: str, api_key: str, used_ids: set) -> dict | None:
     return None
 
 
-def download_pexels_clips(keywords: list, tmp: str, api_key: str) -> list:
-    """Download 1 clip per keyword from Pexels, with broad fallbacks to reach 5 clips."""
+def download_pexels_clips(keywords: list, tmp: str, api_key: str, nicho: str) -> list:
+    """Download 1 clip per keyword from Pexels, with broad fallbacks to reach 14 clips."""
     # Build search queries: specific keyword, then broader fallbacks
     finance_fallbacks = [
-        'money colombia', 'urban street colombia', 'finance city',
-        'shopping market', 'bank building', 'city traffic colombia'
+        'money colombia', 'office worker', 'finance city',
+        'business meeting', 'bank building', 'city traffic colombia',
+        'trading graph', 'success wealth', 'professional laptop'
     ]
-    queries = list(keywords[:5]) + finance_fallbacks
+    psych_fallbacks = [
+        'mental health', 'human emotion', 'brain thinking',
+        'urban people Colombia', 'thinking person', 'lonely street',
+        'dramatic light face', 'nature peace', 'stress office'
+    ]
+    fallbacks = finance_fallbacks if 'finanzas' in (nicho or '').lower() else psych_fallbacks
+    
+    # 14 keywords limit covers 35 segundos (2.5s cada uno)
+    queries = list(keywords[:14]) + fallbacks
 
     paths = []
     used_ids: set = set()
     for i, kw in enumerate(queries):
-        if len(paths) >= 5:
+        if len(paths) >= 14:
             break
         file_info = _pexels_search_one(kw, api_key, used_ids)
         if not file_info:
             logger.warning(f'Pexels no results for "{kw}"')
             continue
         url = file_info['link']
-        try:
-            dl = requests.get(url, timeout=30, stream=True)
-            if dl.status_code != 200:
-                continue
-            p = os.path.join(tmp, f'px_{len(paths)}.mp4')
-            with open(p, 'wb') as f:
-                for chunk in dl.iter_content(65536):
-                    f.write(chunk)
-            paths.append(p)
-            logger.info(f'Pexels clip {len(paths)}/5 "{kw}": ok')
-        except Exception as e:
-            logger.warning(f'Pexels download "{kw}": {e}')
+        paths.append(url)
+        logger.info(f'Pexels link {len(paths)}/14 "{kw}": ready for streaming')
 
-    logger.info(f'Pexels total: {len(paths)} clips')
+    logger.info(f'Pexels total: {len(paths)} queries resolved')
     return paths
 
 
@@ -271,11 +270,13 @@ def _esc(s: str) -> str:
 
 def normalize_clip(src: str, dst: str) -> bool:
     """Re-encode clip to standard 30fps H264 1080x1920 to prevent concat freezing.
-    Different Pexels clips have different codecs/fps/colorspace — must normalize first."""
+    Uses exactly 2.5s via fast seek, scales and crops instantly."""
+    vf_filters = f'fps=30,scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},setsar=1'
     r = subprocess.run([
-        'ffmpeg', '-y', '-threads', '2', '-i', src,
-        '-vf', (f'fps=30,scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,'
-                f'crop={WIDTH}:{HEIGHT},setsar=1'),
+        'ffmpeg', '-y', '-threads', '2',
+        '-t', '2.5',  # Solo extrae 2.5 segundos exactos para máxima eficiencia
+        '-i', src,
+        '-vf', vf_filters,
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '32',
         '-r', '30', '-an', dst
     ], capture_output=True, text=True)
@@ -285,19 +286,8 @@ def normalize_clip(src: str, dst: str) -> bool:
 def compose_single_pass(clip_urls: list, audio_path: str, ass_path: str,
                         fuente: str, duration: float, tmp: str) -> str:
     """Download + normalize clips, then ONE FFmpeg pass for overlay+subs+audio."""
-    raw_paths = []
-    for i, url in enumerate(clip_urls):
-        if url.startswith('http'):
-            path = os.path.join(tmp, f'raw_{i}.mp4')
-            dl = requests.get(url, timeout=60, stream=True)
-            with open(path, 'wb') as f:
-                for chunk in dl.iter_content(65536):
-                    f.write(chunk)
-            logger.info(f'Downloaded clip {i}: {path}')
-        else:
-            path = url
-            logger.info(f'Local clip {i}: {path}')
-        raw_paths.append(path)
+    # Pass URLs directly as raw_paths to enable FFmpeg direct HTTP streaming
+    raw_paths = clip_urls
 
     # Normalize every clip to same codec/fps/resolution — eliminates freezing
     norm_paths = []
@@ -305,13 +295,16 @@ def compose_single_pass(clip_urls: list, audio_path: str, ass_path: str,
         norm = os.path.join(tmp, f'norm_{i}.mp4')
         if normalize_clip(path, norm):
             norm_paths.append(norm)
-            logger.info(f'Normalized clip {i}')
+            logger.info(f'Normalized clip {i} (Streamed)')
         else:
-            norm_paths.append(path)  # fallback to original
-            logger.warning(f'Normalize failed for clip {i}, using original')
+            # If a direct stream fails, IGNORE IT to avoid appending dead/HTTP links to concat_txt
+            logger.warning(f'Normalize streaming failed for clip {i}, skipping')
+            
+    if not norm_paths:
+        raise Exception('Todos los clips fallaron durante el HTTP Streaming y normalizacion.')
 
     # Loop normalized clips to cover full audio duration
-    clip_dur = 5  # seconds per clip after normalization
+    clip_dur = 2.5  # seconds per clip after normalization
     clips_needed = int(math.ceil(duration / clip_dur)) + 1
     looped = (norm_paths * (clips_needed // len(norm_paths) + 1))[:clips_needed]
 
@@ -395,7 +388,7 @@ async def compose_video(req: ComposeRequest):
             pexels_key = os.environ.get('PEXELS_API_KEY', '')
             if pexels_key and keywords:
                 logger.info('Fetching Pexels clips (free)...')
-                clip_urls = download_pexels_clips(keywords, tmp, pexels_key)
+                clip_urls = download_pexels_clips(keywords, tmp, pexels_key, nicho)
                 logger.info(f'Pexels: {len(clip_urls)} clips')
 
             if not clip_urls:
