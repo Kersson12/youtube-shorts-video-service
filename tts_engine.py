@@ -77,6 +77,7 @@ class KokoroTTS:
             
         if self.whisper is None:
             logger.info("Cargando Faster-Whisper (tiny, CPU)...")
+            # compute_type="int8" para máxima eficiencia en CPU
             self.whisper = WhisperModel("tiny", device="cpu", compute_type="int8")
 
     def generate(self, text, voice="es_fede", speed=1.0, lang="es-419"):
@@ -92,40 +93,38 @@ class KokoroTTS:
             available = list(self.model.voices.keys()) if self.model and hasattr(self.model, 'voices') else []
             raise Exception(f"Voz '{voice}' no lista. Disponibles: {available}")
 
-        audio, sr = self.model.create(text, voice=voice, speed=speed, lang=lang)
+        with tempfile.TemporaryDirectory() as tmp:
+            wav_path = os.path.join(tmp, "speech.wav")
+            mp3_path = os.path.join(tmp, "speech.mp3")
             
-            with tempfile.TemporaryDirectory() as tmp:
-                wav_path = os.path.join(tmp, "speech.wav")
-                mp3_path = os.path.join(tmp, "speech.mp3")
+            # 1. Generar Audio con Kokoro
+            samples, sample_rate = self.model.create(text, voice=voice, speed=speed, lang=lang)
+            sf.write(wav_path, samples, sample_rate)
+            
+            # 2. Obtener Timestamps con Faster-Whisper
+            # Usamos el texto original como 'initial_prompt' para guiar la precisión
+            segments, _ = self.whisper.transcribe(wav_path, word_timestamps=True, initial_prompt=text)
+            
+            word_timestamps = []
+            for segment in segments:
+                for word in segment.words:
+                    word_timestamps.append({
+                        "word": word.word.strip(),
+                        "start": round(word.start, 3),
+                        "end": round(word.end, 3)
+                    })
+            
+            # 3. Convertir a MP3 usando FFmpeg
+            subprocess.run([
+                'ffmpeg', '-y', '-i', wav_path, 
+                '-codec:a', 'libmp3lame', '-qscale:a', '2', 
+                mp3_path
+            ], capture_output=True, check=True)
+            
+            with open(mp3_path, "rb") as f:
+                audio_b64 = base64.b64encode(f.read()).decode('utf-8')
                 
-                # 1. Generar Audio con Kokoro
-                samples, sample_rate = self.model.create(text, voice=voice, speed=speed, lang=lang)
-                sf.write(wav_path, samples, sample_rate)
-                
-                # 2. Obtener Timestamps con Faster-Whisper
-                # Usamos el texto original como 'initial_prompt' para guiar la precisión
-                segments, _ = self.whisper.transcribe(wav_path, word_timestamps=True, initial_prompt=text)
-                
-                word_timestamps = []
-                for segment in segments:
-                    for word in segment.words:
-                        word_timestamps.append({
-                            "word": word.word.strip(),
-                            "start": round(word.start, 3),
-                            "end": round(word.end, 3)
-                        })
-                
-                # 3. Convertir a MP3 usando FFmpeg
-                subprocess.run([
-                    'ffmpeg', '-y', '-i', wav_path, 
-                    '-codec:a', 'libmp3lame', '-qscale:a', '2', 
-                    mp3_path
-                ], capture_output=True, check=True)
-                
-                with open(mp3_path, "rb") as f:
-                    audio_b64 = base64.b64encode(f.read()).decode('utf-8')
-                    
-                return audio_b64, word_timestamps
+            return audio_b64, word_timestamps
 
 # Instancia global para ser usada en app.py
 _engine = None
