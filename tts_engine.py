@@ -24,40 +24,24 @@ class KokoroTTS:
                 raise Exception(f"Modelos de Kokoro no encontrados en {self.model_path} o {self.voices_path}. Ejecuta el setup primero.")
             logger.info("Cargando Kokoro TTS ONNX...")
             self.model = Kokoro(self.model_path, self.voices_path)
-            
-            # Cargar voces adicionales nativas si existen (es_fede, es_dora)
-            for v_name in ["es_fede", "es_dora"]:
-                v_file = f"{v_name}.bin"
-                if os.path.exists(v_file):
-                    try:
-                        # Los .bin de HuggingFace son raw floats
-                        # kokoro-onnx usa numpy arrays de (1, 256) o similar
-                        style = np.fromfile(v_file, dtype=np.float32)
-                        # Reajustamos la forma para que sea compatible con kokoro-onnx (1, 256)
-                        if style.shape[0] == 256:
-                            style = style.reshape(1, -1)
-                            # Lo inyectamos directamente en el diccionario de voces del modelo
-                            self.model.voices[v_name] = style
-                            logger.info(f"Voz nativa '{v_name}' cargada y activada.")
-                    except Exception as e:
-                        logger.error(f"Error cargando voz nativa {v_name}: {e}")
+            logger.info(f"Cargadas {len(self.model.voices)} voces del catálogo.")
             
         if self.whisper is None:
             logger.info("Cargando Faster-Whisper (tiny, CPU)...")
             # compute_type="int8" para máxima eficiencia en CPU
             self.whisper = WhisperModel("tiny", device="cpu", compute_type="int8")
 
-    def generate(self, text, voice="es_fede", speed=1.0, lang="es"):
+    def generate(self, text, voice="em_alex", speed=1.0, lang="es-419"):
         self._ensure_loaded()
         
         # Mapeo robusto a voces de Kokoro v1.0
-        # Kokoro usa prefijos: es_ (Spanish), af_ (US Female), etc.
+        # Kokoro usa prefijos: es_ (Spanish Spain), em_ (Male), ef_ (Female), am_ (American Male), etc.
         voice_lower = voice.lower()
         if "es" in lang.lower() or voice_lower.startswith("es-"):
-            lang = "es-419" # Dialecto latinoamericano para eliminar el seseo
-            # Si la voz NO empieza con el prefijo nativo de Kokoro para español (es_), forzamos la masculina
-            if not voice_lower.startswith('es_'):
-                voice = "es_fede"
+            lang = "es-419" # Dialecto latinoamericano
+            # Mapeo de nombres genéricos a la voz de Alex (la mejor masculina latina)
+            if not (voice_lower.startswith('es_') or voice_lower.startswith('em_') or voice_lower.startswith('ef_')):
+                voice = "em_alex"
         
         # Verificación final: si la voz no está en el catálogo, usamos una por defecto segura
         if self.model and hasattr(self.model, 'voices'):
@@ -107,7 +91,7 @@ class KokoroTTS:
 # Instancia global para ser usada en app.py
 _engine = None
 
-def generate_tts_local(text, voice="es_fede", rate="-5%"):
+def generate_tts_local(text, voice="em_alex", rate="-5%"):
     global _engine
     if _engine is None:
         # Buscamos los modelos en la carpeta del script o en shorts_data
