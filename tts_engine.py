@@ -91,14 +91,14 @@ class KokoroTTS:
             # compute_type="int8" para máxima eficiencia en CPU
             self.whisper = WhisperModel("tiny", device="cpu", compute_type="int8")
 
-    def generate(self, text, voice="es_fede", speed=1.0, lang="es-419"):
+    def generate(self, text, voice="em_alex", speed=1.0, lang="es-419"):
         self._ensure_loaded()
         
-        # BLINDAJE: Forzamos voz masculina profesional (Fede) con acento LATINO
-        voice = "es_fede"
+        # BLINDAJE: Forzamos voz masculina profesional (Alex) con acento LATINO
+        voice = "em_alex"
         lang = "es-419"
         
-        logger.info(f"Generando audio Latino (Fede) | Velocidad: {speed}")
+        logger.info(f"Generando audio Latino (Alex) | Velocidad: {speed}")
         
         if self.model is None or not hasattr(self.model, 'voices') or voice not in self.model.voices:
             available = list(self.model.voices.keys()) if self.model and hasattr(self.model, 'voices') else []
