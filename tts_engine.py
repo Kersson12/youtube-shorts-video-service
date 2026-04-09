@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import logging
 import json
+import requests
 import soundfile as sf
 from kokoro_onnx import Kokoro
 from faster_whisper import WhisperModel
@@ -17,11 +18,39 @@ class KokoroTTS:
         self.voices_path = voices_path
         self.model = None
         self.whisper = None
-        
+
+    def _download_file(self, url, dest):
+        logger.info(f"Descargando archivo necesario de {url}...")
+        try:
+            response = requests.get(url, stream=True, timeout=120)
+            response.raise_for_status()
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded = 0
+            with open(dest, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0 and downloaded % (1024 * 1024 * 10) == 0: # Log cada 10MB
+                            logger.info(f"Progreso: {downloaded / (1024 * 1024):.1f}MB / {total_size / (1024 * 1024):.1f}MB")
+            logger.info(f"Descarga completada: {dest}")
+        except Exception as e:
+            logger.error(f"Error descargando {url}: {e}")
+            if os.path.exists(dest):
+                os.remove(dest)
+            raise
+
     def _ensure_loaded(self):
+        # Verificar y descargar modelos si no existen
+        if not os.path.exists(self.model_path):
+            url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_quantized.onnx"
+            self._download_file(url, self.model_path)
+            
+        if not os.path.exists(self.voices_path):
+            url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices.bin"
+            self._download_file(url, self.voices_path)
+
         if self.model is None:
-            if not os.path.exists(self.model_path) or not os.path.exists(self.voices_path):
-                raise Exception(f"Modelos de Kokoro no encontrados en {self.model_path} o {self.voices_path}. Ejecuta el setup primero.")
             logger.info("Cargando Kokoro TTS ONNX...")
             self.model = Kokoro(self.model_path, self.voices_path)
             logger.info(f"Cargadas {len(self.model.voices)} voces del catálogo.")
@@ -94,10 +123,14 @@ _engine = None
 def generate_tts_local(text, voice="em_alex", rate="-5%"):
     global _engine
     if _engine is None:
-        # Buscamos los modelos en la carpeta del script o en shorts_data
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        m_path = os.path.join(base_dir, "kokoro-v1.0.onnx")
-        v_path = os.path.join(base_dir, "voices-v1.0.bin")
+        # Priorizamos el directorio persistente para los modelos
+        persistent_dir = "/root/shorts_data"
+        if not os.path.exists(persistent_dir):
+             # Fallback al directorio actual si no estamos en Docker/EasyPanel
+             persistent_dir = os.path.dirname(os.path.abspath(__file__))
+             
+        m_path = os.path.join(persistent_dir, "kokoro-v1.0.onnx")
+        v_path = os.path.join(persistent_dir, "voices-v1.0.bin")
         _engine = KokoroTTS(m_path, v_path)
     
     # Convertir rate (ej: "-5%") a multiplicador de velocidad (ej: 0.95)

@@ -6,14 +6,9 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     espeak-ng \
     fonts-dejavu-core \
-    wget \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-# Descargar los modelos y voces nativas de Kokoro (Paquete Multilingüe Completo)
-RUN wget -q https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx -O kokoro-v1.0.onnx && \
-    wget -q https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices.bin -O voices-v1.0.bin
 
 # Copiar dependencias primero para aprovechar el cache de Docker
 COPY requirements.txt .
