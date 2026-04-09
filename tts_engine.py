@@ -29,15 +29,25 @@ class KokoroTTS:
             # compute_type="int8" para máxima eficiencia en CPU
             self.whisper = WhisperModel("tiny", device="cpu", compute_type="int8")
 
-    def generate(self, text, voice="af_heart", speed=1.0, lang="en-us"):
+    def generate(self, text, voice="ef_dora", speed=1.0, lang="es-es"):
         self._ensure_loaded()
         
-        # Detectar idioma si es español
-        if "es" in lang.lower():
-            # Kokoro usa es-es para español por ahora
+        # Mapeo robusto a voces de Kokoro v1.0
+        # Kokoro usa prefijos: ef_ (Spanish Female), em_ (Spanish Male), af_ (US Female), etc.
+        voice_lower = voice.lower()
+        if "es" in lang.lower() or "es-" in voice_lower:
             lang = "es-es"
-            if voice == "af_heart": # Default
-                voice = "ef_dora" # Una buena voz femenina en español
+            # Si recibimos una voz de Google/ElevenLabs o af_heart, mapeamos a una española de Kokoro
+            if not voice_lower.startswith('e'):
+                # Por defecto usamos ef_dora (femenina española)
+                voice = "ef_dora"
+        
+        # Verificación final: si la voz no está en el catálogo, usamos una por defecto segura
+        # model.voices es un diccionario con los nombres de las voces cargadas
+        available_voices = list(self.model.voices.keys())
+        if voice not in available_voices:
+            logger.warning(f"Voz '{voice}' no encontrada. Usando 'ef_dora' por defecto. Disponibles: {available_voices}")
+            voice = "ef_dora" if "es" in lang else "af_heart"
         
         with tempfile.TemporaryDirectory() as tmp:
             wav_path = os.path.join(tmp, "speech.wav")
