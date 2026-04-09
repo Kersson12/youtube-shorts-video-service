@@ -44,10 +44,16 @@ class KokoroTTS:
         
         # Verificación final: si la voz no está en el catálogo, usamos una por defecto segura
         # model.voices es un diccionario con los nombres de las voces cargadas
-        available_voices = list(self.model.voices.keys())
-        if voice not in available_voices:
-            logger.warning(f"Voz '{voice}' no encontrada. Usando 'em_fede' por defecto. Disponibles: {available_voices}")
-            voice = "em_fede" if "es" in lang else "af_heart"
+        if self.model and hasattr(self.model, 'voices'):
+            available_voices = list(self.model.voices.keys())
+            if voice not in available_voices:
+                logger.warning(f"Voz '{voice}' no encontrada en catálogo Kokoro. Disponibles: {available_voices}")
+                # Forzamos una voz que REALMENTE exista en el catálogo si es posible
+                if "es" in lang:
+                    voice = "ef_dora" if "ef_dora" in available_voices else (available_voices[0] if available_voices else voice)
+                else:
+                    voice = "af_heart" if "af_heart" in available_voices else (available_voices[0] if available_voices else voice)
+                logger.info(f"Reasignada voz a: {voice}")
         
         with tempfile.TemporaryDirectory() as tmp:
             wav_path = os.path.join(tmp, "speech.wav")
