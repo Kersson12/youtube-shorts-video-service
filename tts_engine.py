@@ -51,9 +51,26 @@ class GoogleTTS:
             mp3_path = os.path.join(tmp, "speech.mp3")
             with open(mp3_path, "wb") as f:
                 f.write(audio_bytes)
+                
+            # Eliminar silencios muertos al inicio y al final del clip generado por TTS 
+            # Esto garantiza que el loop pegue milimetricamente el final con el principio.
+            import subprocess
+            trimmed_path = os.path.join(tmp, "speech_trimmed.mp3")
+            subprocess.run([
+                "ffmpeg", "-y", "-i", mp3_path, 
+                "-af", "silenceremove=start_periods=1:start_duration=0:start_threshold=-50dB,areverse,silenceremove=start_periods=1:start_duration=0:start_threshold=-50dB,areverse", 
+                trimmed_path
+            ], capture_output=True)
             
-            # Pasar el audio puro por Whisper local para obtener timestamps de cada palabra
-            segments, _ = self.whisper.transcribe(mp3_path, word_timestamps=True, initial_prompt=text)
+            # Si ffmpeg falla temporalmente, usamos el original
+            if not os.path.exists(trimmed_path):
+                trimmed_path = mp3_path
+            else:
+                with open(trimmed_path, "rb") as f:
+                    audio_b64 = base64.b64encode(f.read()).decode('utf-8')
+            
+            # Pasar el audio puro TRIMEADO por Whisper local para obtener timestamps matemáticamente perfectos
+            segments, _ = self.whisper.transcribe(trimmed_path, word_timestamps=True, initial_prompt=text)
             
             word_timestamps = []
             for segment in segments:
