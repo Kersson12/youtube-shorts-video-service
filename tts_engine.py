@@ -47,11 +47,9 @@ class KokoroTTS:
             url = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
             self._download_file(url, self.model_path)
 
-        # Para las voces, usaremos los archivos individuales de Alex y Dora (Latino/Nativos)
-        # Esto evita el Error 404 del paquete consolidado
+        # Para las voces, usaremos Fede (Masculino Profesional)
         voices_to_download = {
-            "em_alex": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/em_alex.bin",
-            "ef_dora": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/ef_dora.bin"
+            "es_fede": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/es_fede.bin"
         }
 
         # Inicializar diccionario de voces cargadas
@@ -60,59 +58,41 @@ class KokoroTTS:
 
         for v_name, v_url in voices_to_download.items():
             v_dest = os.path.join(persistent_dir, f"{v_name}.bin")
-            if not os.path.exists(v_dest) or os.path.getsize(v_dest) < 500: # Vector de estilo es pequeño (~1KB-30KB)
+            if not os.path.exists(v_dest) or os.path.getsize(v_dest) < 500:
                 self._download_file(v_url, v_dest)
             
-            # Cargamos el vector de estilo en memoria
             try:
-                # Los .bin de onnx-community son vectores de estilo (estilo dict o raw)
-                # Cargamos con numpy
                 style = np.fromfile(v_dest, dtype=np.float32)
-                # Reajustamos a (1, 256) que es lo que espera kokoro-onnx 
-                # (A veces vienen con padding, por eso tomamos los primeros 256)
                 if style.size >= 256:
                     self.custom_voices[v_name] = style[:256].reshape(1, -1)
-                    logger.info(f"Voz '{v_name}' cargada correctamente desde {v_dest}")
+                    logger.info(f"Voz '{v_name}' cargada correctamente.")
             except Exception as e:
                 logger.error(f"Fallo al cargar voz {v_name}: {e}")
 
         if self.model is None:
-            logger.info("Cargando Kokoro TTS ONNX (Modo Voces Individuales)...")
-            # Truco: Pasamos una de las voces como placeholder, luego inyectamos las nuestras
-            sample_voice_path = os.path.join(persistent_dir, "em_alex.bin")
+            logger.info("Cargando Kokoro TTS ONNX (Modo Latino Masculino)...")
+            sample_voice_path = os.path.join(persistent_dir, "es_fede.bin")
             self.model = Kokoro(self.model_path, sample_voice_path)
-            # Inyectamos nuestro diccionario de voces multilingües
             self.model.voices = self.custom_voices
-            logger.info(f"Catálogo de voces activado con: {list(self.model.voices.keys())}")
             
         if self.whisper is None:
             logger.info("Cargando Faster-Whisper (tiny, CPU)...")
-            # compute_type="int8" para máxima eficiencia en CPU
             self.whisper = WhisperModel("tiny", device="cpu", compute_type="int8")
 
-    def generate(self, text, voice="em_alex", speed=1.0, lang="es-419"):
+    def generate(self, text, voice="es_fede", speed=1.0, lang="es-419"):
         self._ensure_loaded()
         
-        # Mapeo robusto a voces de Kokoro v1.0
-        # Kokoro usa prefijos: es_ (Spanish Spain), em_ (Male), ef_ (Female), am_ (American Male), etc.
-        voice_lower = voice.lower()
-        if "es" in lang.lower() or voice_lower.startswith("es-"):
-            lang = "es-419" # Dialecto latinoamericano
-            # Mapeo de nombres genéricos a la voz de Alex (la mejor masculina latina)
-            if not (voice_lower.startswith('es_') or voice_lower.startswith('em_') or voice_lower.startswith('ef_')):
-                voice = "em_alex"
+        # BLINDAJE: Forzamos voz masculina profesional (Fede) con acento LATINO
+        voice = "es_fede"
+        lang = "es-419"
         
-        # Verificación final: si la voz no está en el catálogo, usamos una por defecto segura
-        if self.model and hasattr(self.model, 'voices'):
-            available_voices = list(self.model.voices.keys())
-            if voice not in available_voices:
-                logger.warning(f"Voz '{voice}' no encontrada en catálogo Kokoro. Disponibles: {available_voices}")
-                # Si buscamos español, intentamos es_fede primero, luego cualquier es_
-                if "es" in lang:
-                    voice = "es_fede" if "es_fede" in available_voices else next((v for v in available_voices if v.startswith('es_')), available_voices[0])
-                else:
-                    voice = "af_heart" if "af_heart" in available_voices else available_voices[0]
-                logger.info(f"Reasignada voz a: {voice}")
+        logger.info(f"Generando audio Latino (Fede) | Velocidad: {speed}")
+        
+        if self.model is None or not hasattr(self.model, 'voices') or voice not in self.model.voices:
+            available = list(self.model.voices.keys()) if self.model and hasattr(self.model, 'voices') else []
+            raise Exception(f"Voz '{voice}' no lista. Disponibles: {available}")
+
+        audio, sr = self.model.create(text, voice=voice, speed=speed, lang=lang)
             
             with tempfile.TemporaryDirectory() as tmp:
                 wav_path = os.path.join(tmp, "speech.wav")
