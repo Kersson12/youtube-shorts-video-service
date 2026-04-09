@@ -47,9 +47,9 @@ class KokoroTTS:
             url = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
             self._download_file(url, self.model_path)
 
-        # Para las voces, usaremos Fede (Masculino Profesional)
+        # Usamos exclusivamente Alex (Verificado con respuesta 200 OK)
         voices_to_download = {
-            "es_fede": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/es_fede.bin"
+            "em_alex": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/em_alex.bin"
         }
 
         # Inicializar diccionario de voces cargadas
@@ -62,16 +62,17 @@ class KokoroTTS:
                 self._download_file(v_url, v_dest)
             
             try:
+                # Los .bin de onnx-community son vectores de estilo raw (256 floats)
                 style = np.fromfile(v_dest, dtype=np.float32)
                 if style.size >= 256:
                     self.custom_voices[v_name] = style[:256].reshape(1, -1)
-                    logger.info(f"Voz '{v_name}' cargada correctamente.")
+                    logger.info(f"Voz '{v_name}' (Alex) cargada y verificada.")
             except Exception as e:
                 logger.error(f"Fallo al cargar voz {v_name}: {e}")
 
         if self.model is None:
-            logger.info("Cargando Kokoro TTS ONNX (Modo Latino Masculino)...")
-            sample_voice_path = os.path.join(persistent_dir, "es_fede.bin")
+            logger.info("Cargando Kokoro TTS ONNX (Modo Alex Latino)...")
+            sample_voice_path = os.path.join(persistent_dir, "em_alex.bin")
             self.model = Kokoro(self.model_path, sample_voice_path)
             self.model.voices = self.custom_voices
             
