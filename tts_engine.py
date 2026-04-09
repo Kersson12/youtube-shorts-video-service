@@ -29,68 +29,67 @@ class KokoroTTS:
             # compute_type="int8" para máxima eficiencia en CPU
             self.whisper = WhisperModel("tiny", device="cpu", compute_type="int8")
 
-    def generate(self, text, voice="ef_dora", speed=1.0, lang="es-es"):
+    def generate(self, text, voice="es_fede", speed=1.0, lang="es"):
         self._ensure_loaded()
         
         # Mapeo robusto a voces de Kokoro v1.0
-        # Kokoro usa prefijos: ef_ (Spanish Female), em_ (Spanish Male), af_ (US Female), etc.
+        # Kokoro usa prefijos: es_ (Spanish), af_ (US Female), etc.
         voice_lower = voice.lower()
         if "es" in lang.lower() or voice_lower.startswith("es-"):
             lang = "es"
-            # Si la voz NO empieza con los prefijos nativos de Kokoro (ef_ o em_), forzamos la masculina
-            if not (voice_lower.startswith('ef_') or voice_lower.startswith('em_')):
-                voice = "em_fede"
+            # Si la voz NO empieza con el prefijo nativo de Kokoro para español (es_), forzamos la masculina
+            if not voice_lower.startswith('es_'):
+                voice = "es_fede"
         
         # Verificación final: si la voz no está en el catálogo, usamos una por defecto segura
-        # model.voices es un diccionario con los nombres de las voces cargadas
         if self.model and hasattr(self.model, 'voices'):
             available_voices = list(self.model.voices.keys())
             if voice not in available_voices:
                 logger.warning(f"Voz '{voice}' no encontrada en catálogo Kokoro. Disponibles: {available_voices}")
-                # Forzamos una voz que REALMENTE exista en el catálogo si es posible
+                # Si buscamos español, intentamos es_fede primero, luego cualquier es_
                 if "es" in lang:
-                    voice = "em_fede" if "em_fede" in available_voices else (available_voices[0] if available_voices else voice)
+                    voice = "es_fede" if "es_fede" in available_voices else next((v for v in available_voices if v.startswith('es_')), available_voices[0])
                 else:
-                    voice = "af_heart" if "af_heart" in available_voices else (available_voices[0] if available_voices else voice)
+                    voice = "af_heart" if "af_heart" in available_voices else available_voices[0]
                 logger.info(f"Reasignada voz a: {voice}")
-        
-        with tempfile.TemporaryDirectory() as tmp:
-            wav_path = os.path.join(tmp, "speech.wav")
-            mp3_path = os.path.join(tmp, "speech.mp3")
             
-            # 1. Generar Audio con Kokoro
-            samples, sample_rate = self.model.create(text, voice=voice, speed=speed, lang=lang)
-            sf.write(wav_path, samples, sample_rate)
-            
-            # 2. Obtener Timestamps con Faster-Whisper
-            # Usamos el texto original como 'initial_prompt' para guiar la precisión
-            segments, _ = self.whisper.transcribe(wav_path, word_timestamps=True, initial_prompt=text)
-            
-            word_timestamps = []
-            for segment in segments:
-                for word in segment.words:
-                    word_timestamps.append({
-                        "word": word.word.strip(),
-                        "start": round(word.start, 3),
-                        "end": round(word.end, 3)
-                    })
-            
-            # 3. Convertir a MP3 usando FFmpeg
-            subprocess.run([
-                'ffmpeg', '-y', '-i', wav_path, 
-                '-codec:a', 'libmp3lame', '-qscale:a', '2', 
-                mp3_path
-            ], capture_output=True, check=True)
-            
-            with open(mp3_path, "rb") as f:
-                audio_b64 = base64.b64encode(f.read()).decode('utf-8')
+            with tempfile.TemporaryDirectory() as tmp:
+                wav_path = os.path.join(tmp, "speech.wav")
+                mp3_path = os.path.join(tmp, "speech.mp3")
                 
-            return audio_b64, word_timestamps
+                # 1. Generar Audio con Kokoro
+                samples, sample_rate = self.model.create(text, voice=voice, speed=speed, lang=lang)
+                sf.write(wav_path, samples, sample_rate)
+                
+                # 2. Obtener Timestamps con Faster-Whisper
+                # Usamos el texto original como 'initial_prompt' para guiar la precisión
+                segments, _ = self.whisper.transcribe(wav_path, word_timestamps=True, initial_prompt=text)
+                
+                word_timestamps = []
+                for segment in segments:
+                    for word in segment.words:
+                        word_timestamps.append({
+                            "word": word.word.strip(),
+                            "start": round(word.start, 3),
+                            "end": round(word.end, 3)
+                        })
+                
+                # 3. Convertir a MP3 usando FFmpeg
+                subprocess.run([
+                    'ffmpeg', '-y', '-i', wav_path, 
+                    '-codec:a', 'libmp3lame', '-qscale:a', '2', 
+                    mp3_path
+                ], capture_output=True, check=True)
+                
+                with open(mp3_path, "rb") as f:
+                    audio_b64 = base64.b64encode(f.read()).decode('utf-8')
+                    
+                return audio_b64, word_timestamps
 
 # Instancia global para ser usada en app.py
 _engine = None
 
-def generate_tts_local(text, voice="em_fede", rate="-5%"):
+def generate_tts_local(text, voice="es_fede", rate="-5%"):
     global _engine
     if _engine is None:
         # Buscamos los modelos en la carpeta del script o en shorts_data
