@@ -47,34 +47,44 @@ class KokoroTTS:
             url = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
             self._download_file(url, self.model_path)
 
-        # Usamos exclusivamente Alex (Verificado con respuesta 200 OK)
-        voices_to_download = {
-            "em_alex": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/em_alex.bin"
-        }
-
-        # Inicializar diccionario de voces cargadas
-        self.custom_voices = {}
+        # 1. Fundación: Descargar archivo de voces oficial (27MB) que la librería espera para arrancar
+        official_voices_url = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin"
         persistent_dir = os.path.dirname(self.model_path)
+        base_voices_path = os.path.join(persistent_dir, "voices-v1.0.bin")
+        
+        if not os.path.exists(base_voices_path) or os.path.getsize(base_voices_path) < 1024 * 1024:
+            self._download_file(official_voices_url, base_voices_path)
 
-        for v_name, v_url in voices_to_download.items():
-            v_dest = os.path.join(persistent_dir, f"{v_name}.bin")
-            if not os.path.exists(v_dest) or os.path.getsize(v_dest) < 500:
-                self._download_file(v_url, v_dest)
-            
-            try:
-                # Los .bin de onnx-community son vectores de estilo raw (256 floats)
-                style = np.fromfile(v_dest, dtype=np.float32)
-                if style.size >= 256:
-                    self.custom_voices[v_name] = style[:256].reshape(1, -1)
-                    logger.info(f"Voz '{v_name}' (Alex) cargada y verificada.")
-            except Exception as e:
-                logger.error(f"Fallo al cargar voz {v_name}: {e}")
+        # 2. Especialidad: Descargar y cargar Alex (Máxima calidad Latina)
+        alex_url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/em_alex.bin"
+        alex_dest = os.path.join(persistent_dir, "em_alex.bin")
+        
+        if not os.path.exists(alex_dest) or os.path.getsize(alex_dest) < 500:
+            self._download_file(alex_url, alex_dest)
 
         if self.model is None:
-            logger.info("Cargando Kokoro TTS ONNX (Modo Alex Latino)...")
-            sample_voice_path = os.path.join(persistent_dir, "em_alex.bin")
-            self.model = Kokoro(self.model_path, sample_voice_path)
-            self.model.voices = self.custom_voices
+            logger.info("Inicializando motor Kokoro con base oficial + Alex...")
+            # Arrancamos con las voces oficiales para que no falle el constructor
+            self.model = Kokoro(self.model_path, base_voices_path)
+            
+            # Cargamos Alex manualmente con allow_pickle=True para superar el error de numpy
+            try:
+                # Intentamos cargar como pickle que es lo que falló antes
+                alex_style = np.load(alex_dest, allow_pickle=True)
+                if alex_style.size >= 256:
+                    self.model.voices["em_alex"] = alex_style[:256].reshape(1, -1)
+                    logger.info("Voz de Alex inyectada exitosamente con alta calidad.")
+            except Exception as e:
+                logger.error(f"Error cargando vector de Alex: {e}. Intentando carga directa.")
+                # Fallback por si acaso es binario puro
+                try:
+                    style = np.fromfile(alex_dest, dtype=np.float32)
+                    if style.size >= 256:
+                        self.model.voices["em_alex"] = style[:256].reshape(1, -1)
+                except:
+                    pass
+            
+            logger.info(f"Catálogo de voces listo: {list(self.model.voices.keys())}")
             
         if self.whisper is None:
             logger.info("Cargando Faster-Whisper (tiny, CPU)...")
